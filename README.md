@@ -212,6 +212,53 @@ GUI는 데스크톱 환경과 FFmpeg가 필요합니다. **로그인 창 열기*
 
 ---
 
+## 4. Container
+
+podman 및 podman-compose 호환 배포
+
+### 결과물을 출력할 경로 생성
+
+```bash
+sudo mkdir -p /srv/recordings
+```
+
+### 빌드
+
+```bash
+sudo podman compose build
+```
+
+### config.json 생성
+
+```bash
+sudo podman compose run --rm recorder python settings.py
+```
+
+> 컨테이너에서는 브라우저를 사용할 수 없으니, 네이버 로그인이 필요한 경우
+> 
+> 1. 쿠키를 직접 가지고 오거나
+> 2. GUI환경에서 `config.json`을 만들고 파일을 그대로 위치시키는 등
+> 
+> 의 방법으로 사용할 수 있다.
+
+### 실행
+
+```bash
+sudo podman compose up -d
+```
+
+> 재부팅 후 컨테이너를 자동으로 재시작 하도록 하기 위해서는 `sudo systemctl enable --now podman-restart`가 필요할 수 있다.
+
+### TUI 모니터링
+
+```bash
+sudo podman attach chzzk-rekoda 
+```
+
+> `Ctrl + P` → `Ctrl + Q`로 빠져나와야 안전하게 나올 수 있다.
+>
+> `Ctrl + C`는 컨테이너 안의 프로세스를 중지시켜서 **컨테이너 재시작**을 유발할 수 있다.
+
 ## ❓ 자주 묻는 질문 (FAQ)
 
 **Q. 녹화된 파일은 어디에 있나요?**

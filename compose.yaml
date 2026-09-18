@@ -1,0 +1,18 @@
+services:
+  recorder:
+    build:
+      context: .
+    image: localhost/chzzk-rekoda:latest
+    container_name: chzzk-rekoda
+    command: ["python", "chzzk_record.py"]
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - /srv/recordings:/recordings
+    environment:
+      TZ: Asia/Seoul
+    tty: true
+    stdin_open: true
+    init: true
+    restart: always
+    stop_grace_period: 150s
