@@ -2,6 +2,7 @@ FROM docker.io/library/python:3.12-slim-trixie
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg tzdata \
+        intel-media-va-driver vainfo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

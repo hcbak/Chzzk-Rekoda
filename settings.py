@@ -18,6 +18,7 @@ from config_store import (
     DEFAULT_RECORDING_SPLIT_MINUTES,
     DEFAULT_RESCAN_INTERVAL_SECONDS,
     ENCODER_PRESETS,
+    HEVC_QUALITY_MAX,
     MAX_RECORDING_SPLIT_MINUTES,
     MAX_RESCAN_INTERVAL_SECONDS,
     MIN_RESCAN_INTERVAL_SECONDS,
@@ -115,6 +116,8 @@ def print_codec_settings(codec, settings):
     print(t("settings.target_bitrate", bitrate=settings["bitrate"]))
     print(t("settings.max_bitrate", bitrate=settings["max_bitrate"]))
     print(t("settings.preset", preset=settings["preset"]))
+    if "quality" in settings:
+        print(f"{t('settings.hevc_quality')}: {settings['quality']}")
     print("-" * 30)
 
 
@@ -368,6 +371,8 @@ def edit_codec(kind):
         print_codec_settings(label, codec)
         keys = ("enabled", "encoder", "bitrate", "max_bitrate", "preset")
         print("\n".join(f"{i}. {t('gui.' + key)}" for i, key in enumerate(keys, 1)))
+        if kind == "hevc":
+            print("6. " + t("settings.hevc_quality"))
         print("0. " + t("gui.back"))
         choice = input(t("settings.prompt_choice")).strip()
         if choice == "1":
@@ -398,6 +403,13 @@ def edit_codec(kind):
                 print(t("settings.invalid_preset"))
                 continue
             codec["preset"] = preset
+        elif choice == "6" and kind == "hevc":
+            codec["quality"] = clamp_int(
+                input(t("settings.hevc_quality") + ": "),
+                codec["quality"],
+                0,
+                HEVC_QUALITY_MAX,
+            )
         elif choice == "0":
             return
         else:

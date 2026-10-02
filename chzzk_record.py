@@ -19,7 +19,11 @@ import aiofiles
 import aiohttp
 import orjson
 
-from config_store import normalize_h264_settings
+from config_store import (
+    HEVC_QUALITY_ENCODERS,
+    HEVC_QUALITY_MAX,
+    normalize_h264_settings,
+)
 from process_utils import console_python, hidden_process_kwargs, terminal_display_mode
 from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
 from recording_options import (
@@ -283,7 +287,7 @@ KNOWN_HEVC_ENCODERS = {
 }
 HARDWARE_HEVC_ENCODERS = KNOWN_HEVC_ENCODERS - {"libx265"}
 HEVC_SOFTWARE_FALLBACK_ENCODERS = ("libx265",)
-HEVC_ENCODER_PROBE_CACHE: Dict[Tuple[str, str, str, str, str], Tuple[bool, str]] = {}
+HEVC_ENCODER_PROBE_CACHE: Dict[Tuple[str, ...], Tuple[bool, str]] = {}
 HEVC_ENCODER_PROBE_LOCK = asyncio.Lock()
 LIBX265_PRESETS = {
     "ultrafast",
@@ -506,12 +510,14 @@ def normalize_hevc_settings(value: Any) -> Dict[str, Any]:
         "bitrate": "2500k",
         "max_bitrate": "10000k",
         "preset": "ultrafast",
+        "quality": 0,
     }
     if not isinstance(value, dict):
         return defaults
 
     settings = defaults | value
     settings["enable"] = bool(settings.get("enable", False))
+    settings["quality"] = clamp_int(settings.get("quality"), 0, 0, HEVC_QUALITY_MAX)
     encoder = str(settings.get("encoder", defaults["encoder"])).strip()
     if encoder not in KNOWN_HEVC_ENCODERS:
         logger.warning(tr("record.unknown_hevc_encoder", encoder=encoder))
@@ -1553,6 +1559,25 @@ def capped_vbr_args(bitrate: str, max_bitrate: str, bufsize: str) -> List[str]:
     return ["-maxrate", max_bitrate, "-bufsize", bufsize]
 
 
+def hevc_quality(hevc_settings: Dict[str, Any]) -> int:
+    """Return the quality value when the active encoder supports quality mode."""
+    if hevc_settings.get("encoder", "libx265") not in HEVC_QUALITY_ENCODERS:
+        return 0
+    return clamp_int(hevc_settings.get("quality"), 0, 0, HEVC_QUALITY_MAX)
+
+
+def hevc_rate_args(
+    hevc_settings: Dict[str, Any], bitrate: str, max_bitrate: str, bufsize: str
+) -> List[str]:
+    quality = hevc_quality(hevc_settings)
+    if not quality:
+        return ["-b:v", bitrate, "-maxrate", max_bitrate, "-bufsize", bufsize]
+    if hevc_settings.get("encoder") == "hevc_vaapi":
+        # Without a bitrate FFmpeg selects ICQ, or CQP when the driver lacks ICQ.
+        return ["-global_quality", str(quality)]
+    return ["-crf", str(quality)]
+
+
 def numeric_preset(value: Any, default: str) -> str:
     text = default if value is None else str(value).strip()
     if not text:
@@ -1861,12 +1886,7 @@ def build_hevc_probe_args(hevc_settings: Dict[str, Any]) -> List[str]:
             "format=nv12,hwupload",
             "-c:v",
             "hevc_vaapi",
-            "-b:v",
-            bitrate,
-            "-maxrate",
-            max_bitrate,
-            "-bufsize",
-            bufsize,
+            *hevc_rate_args(hevc_settings, bitrate, max_bitrate, bufsize),
         ]
     if encoder == "hevc_videotoolbox":
         return [
@@ -1888,12 +1908,9 @@ def build_hevc_probe_args(hevc_settings: Dict[str, Any]) -> List[str]:
         "libx265",
         "-preset",
         preset,
-        "-b:v",
-        bitrate,
-        "-maxrate",
-        max_bitrate,
-        "-bufsize",
-        bufsize,
+        *hevc_rate_args(
+            dict(hevc_settings, encoder="libx265"), bitrate, max_bitrate, bufsize
+        ),
         "-tune",
         "zerolatency",
     ]
@@ -1909,6 +1926,7 @@ def probe_hevc_encoder(
         str(hevc_settings.get("bitrate", "2500k")),
         str(hevc_settings.get("max_bitrate", "10000k")),
         str(hevc_settings.get("preset", "ultrafast")),
+        str(hevc_quality(hevc_settings)),
     )
     if cache_key in HEVC_ENCODER_PROBE_CACHE:
         return HEVC_ENCODER_PROBE_CACHE[cache_key]
@@ -2382,6 +2400,21 @@ async def record_stream(
                             and recording_format != "webm"
                             and encoder == "hevc_vaapi"
                         ) or (enable_av1 and av1_encoder == "av1_vaapi") or (enable_h264 and encoder == "h264_vaapi"):
+                            hwaccel_args = []
+                            if enable_hevc and encoder == "hevc_vaapi":
+                                # Decode on the GPU too. FFmpeg falls back to
+                                # software decoding if VAAPI cannot decode.
+                                hwaccel_args = [
+                                    "-hwaccel",
+                                    "vaapi",
+                                    "-hwaccel_device",
+                                    "vaapi0",
+                                ]
+                                if not plan["filters"]:
+                                    # CPU filters need downloaded frames.
+                                    hwaccel_args.extend(
+                                        ["-hwaccel_output_format", "vaapi"]
+                                    )
                             # Attempt to use the default render device
                             base_input_args = [
                                 str(ffmpeg_path),
@@ -2389,6 +2422,7 @@ async def record_stream(
                                 "vaapi=vaapi0:/dev/dri/renderD128",
                                 "-filter_hw_device",
                                 "vaapi0",
+                                *hwaccel_args,
                                 "-fflags",
                                 "+genpts+discardcorrupt",
                                 "-i",
@@ -2447,6 +2481,17 @@ async def record_stream(
                             preset = active_hevc_settings.get("preset", "ultrafast")
 
                             bufsize = calculate_bufsize(max_bitrate)
+                            if (
+                                active_hevc_settings.get("quality")
+                                and encoder not in HEVC_QUALITY_ENCODERS
+                            ):
+                                logger.warning(
+                                    tr(
+                                        "record.hevc_quality_unsupported",
+                                        channel_name=channel_name,
+                                        encoder=encoder,
+                                    )
+                                )
 
                             common_hevc_args = [*metadata_args]
                             if recording_format == "ts":
@@ -2466,12 +2511,15 @@ async def record_stream(
                                     "libx265",
                                     "-preset",
                                     preset,
-                                    "-b:v",
-                                    bitrate,
-                                    "-maxrate",
-                                    max_bitrate,
-                                    "-bufsize",
-                                    bufsize,
+                                    *hevc_rate_args(
+                                        dict(
+                                            active_hevc_settings,
+                                            encoder="libx265",
+                                        ),
+                                        bitrate,
+                                        max_bitrate,
+                                        bufsize,
+                                    ),
                                     "-tune",
                                     "zerolatency",
                                     "-tag:v",
@@ -2546,15 +2594,17 @@ async def record_stream(
                             elif encoder == "hevc_vaapi":
                                 encoding_args = [
                                     "-vf",
-                                    "format=nv12,hwupload",
+                                    # Pass through hardware-decoded frames, or
+                                    # upload them after software decode/filters.
+                                    "format=nv12|vaapi,hwupload",
                                     "-c:v",
                                     "hevc_vaapi",
-                                    "-b:v",
-                                    bitrate,
-                                    "-maxrate",
-                                    max_bitrate,
-                                    "-bufsize",
-                                    bufsize,
+                                    *hevc_rate_args(
+                                        active_hevc_settings,
+                                        bitrate,
+                                        max_bitrate,
+                                        bufsize,
+                                    ),
                                     "-tag:v",
                                     "hvc1",
                                     "-c:a",
@@ -2590,12 +2640,15 @@ async def record_stream(
                                     "libx265",
                                     "-preset",
                                     preset,
-                                    "-b:v",
-                                    bitrate,
-                                    "-maxrate",
-                                    max_bitrate,
-                                    "-bufsize",
-                                    bufsize,
+                                    *hevc_rate_args(
+                                        dict(
+                                            active_hevc_settings,
+                                            encoder="libx265",
+                                        ),
+                                        bitrate,
+                                        max_bitrate,
+                                        bufsize,
+                                    ),
                                     "-tune",
                                     "zerolatency",
                                     "-tag:v",

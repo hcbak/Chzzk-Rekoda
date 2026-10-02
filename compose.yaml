@@ -9,6 +9,9 @@ services:
     volumes:
       - ./:/app
       - /srv/recordings:/recordings
+    devices:
+      # Intel GPU for hevc_vaapi encoding and VAAPI decoding
+      - /dev/dri:/dev/dri
     environment:
       TZ: Asia/Seoul
     tty: true

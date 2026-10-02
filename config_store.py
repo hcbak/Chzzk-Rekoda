@@ -94,6 +94,7 @@ default_config = {
         "bitrate": "2500k",
         "max_bitrate": "10000k",
         "preset": "ultrafast",
+        "quality": 0,
     },
     "av1_settings": {
         "enable": False,
@@ -116,6 +117,10 @@ SAFE_CHANNEL_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 SAFE_FFMPEG_VALUE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 
 SAFE_BITRATE = re.compile(r"^\d+[kKmM]?$")
+
+# 0 keeps bitrate mode; 1-51 selects quality-based rate control.
+HEVC_QUALITY_MAX = 51
+HEVC_QUALITY_ENCODERS = {"libx265", "hevc_vaapi"}
 
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -513,6 +518,7 @@ def normalize_config(config, notify=None):
     hevc["bitrate"] = normalize_bitrate(hevc.get("bitrate"), "2500k")
     hevc["max_bitrate"] = normalize_bitrate(hevc.get("max_bitrate"), "10000k")
     hevc["preset"] = normalize_encoder_preset(hevc["encoder"], hevc.get("preset"))
+    hevc["quality"] = clamp_int(hevc.get("quality"), 0, 0, HEVC_QUALITY_MAX)
     config["hevc_settings"] = hevc
 
     av1 = deep_merge_defaults(
