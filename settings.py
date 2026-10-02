@@ -47,7 +47,12 @@ from i18n import (
     state_label,
     translate,
 )
-from recording_options import DIRECT_QUALITIES, H264_ENCODERS, normalize_quality
+from recording_options import (
+    CHANNEL_CODECS,
+    DIRECT_QUALITIES,
+    H264_ENCODERS,
+    normalize_quality,
+)
 
 
 def print_preset_help(encoder, t):
@@ -439,6 +444,10 @@ def edit_channel_recording():
             )
         else:
             raise ValueError(t("settings.invalid_number"))
+        codec_choice = int(input(t("settings.channel_codec_prompt")))
+        if not 0 <= codec_choice <= len(CHANNEL_CODECS):
+            raise ValueError(t("settings.invalid_number"))
+        channel["codec"] = CHANNEL_CODECS[codec_choice - 1] if codec_choice else None
         config["channels"][index] = channel
         save_config(config)
     except ValueError:

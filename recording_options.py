@@ -5,6 +5,8 @@ import re
 from copy import deepcopy
 
 DIRECT_QUALITIES = ("144p", "360p", "480p", "720p60", "1080p60")
+# Per-channel codec override; None inherits the global codec settings.
+CHANNEL_CODECS = ("copy", "h264", "hevc", "av1")
 QUALITY_DEFAULTS = {"mode": "best", "width": 0, "height": 1080, "fps": 0.0}
 H264_DEFAULTS = {
     "enable": False,
@@ -62,6 +64,9 @@ def normalize_channel_options(channel):
         channel["recording_split_minutes"] = effective_split(channel, 0)
     if channel.get("quality_settings") is not None:
         channel["quality_settings"] = normalize_quality(channel["quality_settings"])
+    if channel.get("codec") is not None:
+        codec = str(channel["codec"]).strip().lower()
+        channel["codec"] = codec if codec in CHANNEL_CODECS else None
     return channel
 
 

@@ -2168,6 +2168,12 @@ async def record_stream(
     recording_split_minutes = effective_split(channel, recording_split_minutes)
     h264_settings = normalize_h264_settings(h264_settings)
     quality_settings = normalize_quality(channel.get("quality_settings") or quality_settings)
+    channel_codec = channel.get("codec")
+    if channel_codec is not None:
+        # The channel picks the codec; encoder details stay global.
+        h264_settings = dict(h264_settings, enable=channel_codec == "h264")
+        hevc_settings = dict(hevc_settings, enable=channel_codec == "hevc")
+        av1_settings = dict(av1_settings, enable=channel_codec == "av1")
     if h264_settings["enable"]:
         hevc_settings = dict(hevc_settings, enable=False)
         av1_settings = dict(av1_settings, enable=False)
@@ -2286,6 +2292,13 @@ async def record_stream(
                     )
                     active_h264_settings = dict(h264_settings)
                     if plan["filters"] and not enable_av1 and not enable_hevc:
+                        if channel_codec == "copy":
+                            logger.warning(
+                                tr(
+                                    "record.copy_needs_encoding",
+                                    channel_name=channel_name,
+                                )
+                            )
                         active_h264_settings["enable"] = True
                     # WebM requires VP9/AV1. Explicit H.264 selects MKV instead.
                     if output_format == "webm" and not h264_settings["enable"]:

@@ -405,6 +405,13 @@ TRANSLATIONS = {
             "비트레이트 설정으로 녹화합니다."
         ),
         "settings.hevc_quality": "품질 값 (0 = 비트레이트 사용, 1~51 = 품질 기반)",
+        "record.copy_needs_encoding": (
+            "{channel_name}: 해상도/FPS 변환이 필요해 원본 그대로 저장할 수 없습니다. "
+            "H.264로 인코딩합니다."
+        ),
+        "settings.channel_codec_prompt": (
+            "인코딩 (0 = 전체 설정 따름, 1 = 원본 그대로, 2 = H.264, 3 = HEVC, 4 = AV1): "
+        ),
         "record.attempting_channel": "{channel_name} 채널 녹화를 시도합니다.",
         "record.channel_inactive": "{channel_name} 채널은 비활성 상태입니다. 녹화를 건너뜁니다.",
         "record.waiting_live": "'{channel_name}' 채널의 방송 시작을 기다리는 중입니다...",
